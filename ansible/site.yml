@@ -1,0 +1,5 @@
+---
+# Deploy everything. As this is done in sequence, this takes a while.
+- import_playbook: app_server.yml
+
+- import_playbook: esb_server.yml

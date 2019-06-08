@@ -1,0 +1,11 @@
+.DS_Store
+.terraform
+.terraform.*
+terraform.tfstate
+terraform.tfstate.backup
+*secrets.tf
+
+*secrets.yml
+*.retry
+*.png
+*vault-password-file.txt

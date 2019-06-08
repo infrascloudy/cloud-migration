@@ -1,0 +1,19 @@
+---
+- hosts: app_servers
+  roles:
+  - { role: setup, tags: setup }
+  # - { role: filebeat, tags: filebeat }
+  # - { role: blackbox-exporter, tags: blackbox-exporter }
+  - { role: aorta, tags: aorta }
+  - { role: websso, tags: websso }
+  - { role: xdrive, tags: xdrive, when: dragonserver_setup_xdrive }
+  - { role: dragonserver, tags: dragonserver }
+  - { role: dragon2, tags: dragon2 }
+  - { role: dragonrich, tags: dragonrich }
+  - { role: ase, tags: ase }
+  - { role: blazeservices, tags: blazeservices }
+  - { role: potentialsservice, tags: potentialsservice }
+  - { role: mailservice, tags: mailservice }
+  - { role: khaleesi, tags: khaleesi }
+  - { role: reportservice, tags: reportservice }
+  - { role: viper, tags: viper }

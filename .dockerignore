@@ -1,0 +1,11 @@
+**secrets.yml
+**secrets.tf
+
+.DS_Store
+**.terraform
+**.terraform.*
+**terraform.tfstate
+**terraform.tfstate.backup
+*secrets.tf
+
+**.retry

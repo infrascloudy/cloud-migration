@@ -1,0 +1,176 @@
+---
+#The tests below run from the Windows target hosts
+- hosts: app_servers
+  tasks:
+  - name: check that we can ping Aorta via HTTP on port 1687
+    win_uri:
+      url: http://localhost:1687
+    tags: check_aorta
+
+  - name: check that we can ping the Aorta DLL running on IIS on HTTP port 80
+    win_uri:
+      url: http://localhost:80/scripts/aorta.dll/admin/aorta.html
+    tags: check_aorta
+
+  - name: check that we can ping MAC via HTTP on port 7504 (if enabled)
+    win_uri:
+      url: http://localhost:7504
+    when: aorta_enable_mac
+    tags: check_mac
+
+  - name: check that we can ping Dragon Server via HTTP on port 7501
+    win_uri:
+      url: http://localhost:7501
+    tags: check_dragonserver
+
+  - name: check that we can ping WebSSO via HTTP on port 7200
+    win_uri:
+      url: http://localhost:7200
+    tags: check_websso
+
+  - name: check that we can login to ASE via an Aorta HTTP call
+    win_uri:
+      method: POST
+      url: http://localhost:1687
+      content_type: 'application/xml'
+      headers:
+        IXMLAction: 'urn:cqs-co-za:aorta.ase.v2'
+      body: '<Envelope><Login><Credentials><LoginName>{{ dragonserver_username }}</LoginName><Password>{{ dragonserver_password }}</Password></Credentials>'
+    tags: check_ase_login
+
+  - name: check that we can ping Dragon2 via HTTP on port 8888
+    win_uri:
+      url: http://localhost:8888
+    tags: check_dragon2
+
+  - name: check that we can fetch the Dragon2 metrics via the JXM prometheus exporter
+    win_uri:
+      url: 'http://localhost:9888/metrics'
+    tags: check_dragon2
+
+  - name: check that BlazeServices is listening on port 1630
+    win_wait_for:
+      port: 1630
+    tags: check_blazeservices
+
+  - name: check that we can fetch the BlazeServices metrics via the JXM prometheus exporter
+    win_uri:
+      url: 'http://localhost:9630/metrics'
+    tags: check_blazeservices
+
+  - name: check that PotentialsService is listening on port 1635
+    win_wait_for:
+      port: 1630
+    tags: check_potentialsservice
+
+  - name: check that we can fetch the PotentialsService metrics via the JXM prometheus exporter
+    win_uri:
+      url: 'http://localhost:9635/metrics'
+    tags: check_potentialsservice
+
+  - name: check that we can ping the MailService's Hangfire dashboard via HTTP on port 5100
+    win_uri:
+      url: 'http://localhost:5100/hangfire'
+    tags: check_mailservice
+
+  - name: check that we can fetch Khaleesi's Swagger doc from HTTP port 5000
+    win_uri:
+      url: http://localhost:5000/swagger/ui/index.html
+      register: result
+      until: result.status_code is defined and result.status_code == 200
+      retries: 10
+      delay: 5
+    tags: check_khaleesi
+
+  - name: check that we can fetch Khaleesi's Hangfire dashboard via HTTP on port 5000
+    win_uri:
+      url: 'http://localhost:5000/hangfire'
+      register: result
+      until: result.status_code is defined and result.status_code == 200
+      retries: 10
+      delay: 5
+    tags: check_khaleesi
+
+  - name: check that we ping the ReportService on HTTP port 5200
+    block:
+    - win_uri:
+        url: 'http://localhost:5200/api/report'
+        use_basic_parsing: no
+      ignore_errors: true
+      register: ping_status
+
+    - debug:
+        msg: "The ReportService is responding (albeit with a 405 when doing a GET)"
+      when: ping_status.msg.find("405") != -1
+    tags: check_reportservice
+
+  - name: check that we can fetch the Viper home page via HTTP on port 1700
+    win_uri:
+      url: 'http://localhost:1700'
+    register: result
+    until: result.status_code is defined and result.status_code == 200
+    retries: 10
+    delay: 5
+    tags: check_viper
+
+  # - name: check that we can ping blackbox-exporter via HTTP on port 9115
+  #   win_uri:
+  #     url: 'http://localhost:9115/probe?target=google.com&module=http_2xx'
+  #   tags: check_blackbox_exporter
+
+#The tests below target the ESB servers, but run from the Ansible machine
+- hosts: esb_servers
+  roles:
+  - { role: dragon2_tests, tags: check_dragon2 }
+  tasks:
+  - name: check that we can ping Dragon Uploader from the ESB
+    win_uri:
+      url: "http://{{ dragon_uploader_host }}/api/1.0/system/health-check"
+    tags: check_esb
+
+  # - name: check that we can ping Puller from the ESB
+  #   win_uri:
+  #     url: "http://{{ puller_host }}/stats/currentActiveSyncs"
+  #   tags: check_esb
+
+  - name: check that we can request a JWT token from the Security Service and use it with the ESB
+    block:
+    - uri:
+        url: 'http://{{ security_service_host }}/api/auth/token'
+        method: POST
+        body: "{ 'client_id': '{{ blazeservices_clientid }}', 'grant_type': 'client_credentials','client_secret': '{{ blazeservices_clientsecret }}', 'audience': 'https://{{ security_service_audience }}' }"
+        content_type: 'application/json'
+        body_format: json
+      register: security_service_response
+      delegate_to: 127.0.0.1
+
+    - set_fact:
+        accessToken: '{{ security_service_response.json.accessToken }}'
+
+    - uri:
+        url: 'https://{{ inventory_hostname}}:1611/api/1.0/fees/tiering-constants'
+        headers:
+          'accept': 'application/json'
+          'authorization': 'Bearer {{ accessToken }}'
+        validate_certs: False
+      delegate_to: 127.0.0.1
+
+    # - win_uri:
+    #     url: '{{ blazeservices_crm_wrapper_url }}/api/client-users'
+    #     headers:
+    #       'accept': 'application/json'
+    #       'authorization': 'Bearer {{ accessToken }}'
+    #     validate_certs: False
+    tags: check_esb
+
+  - name: check that we can read information from Khaleesi via Nginx and the ESB
+    uri:
+      url: 'https://{{ inventory_hostname }}:1611/blaze-api/1.0/payments/batches/search?branchIds=VATitCompanyTwoSingapore'
+      validate_certs: False
+    delegate_to: 127.0.0.1
+    tags: check_khaleesi
+
+  # - name: check that we can ping blackbox-exporter via HTTP on port 9115
+  #   win_uri:
+  #     url: 'http://localhost:9115/probe?target=google.com&module=http_2xx'
+  #   tags: check_blackbox_exporter
